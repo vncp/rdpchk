@@ -1,6 +1,7 @@
-
+import os
 import logging
 import cv2 as cv
+import matplotlib.pyplot as plt
 
 # Takes a desktop image to find the tasksbar inside bottom split
 def check_desktop(desktop, template, confidence=.75, split=4, debug=0):
@@ -53,8 +54,7 @@ def check_desktop(desktop, template, confidence=.75, split=4, debug=0):
 # Creates an edge from the icon using OpenCV canny() then tries to match
 # at multiple scales on the desktop
 # Returns amount of matches over a threshold
-'''
-def check_icon(desktop, icon_path, threshold=.4, debug=0):
+def check_icon(desktop, icon_path, threshold=.11, debug=0):
     logging.info(f'Starting check_icon with desktop_path={desktop}, icon_path={icon_path}, threshold={threshold}')
     sift = cv.SIFT_create()
     try:
@@ -65,8 +65,9 @@ def check_icon(desktop, icon_path, threshold=.4, debug=0):
     kp_dt, des_dt = sift.detectAndCompute(dt_img, None)
     for icon in os.listdir(icon_path):
         try:
+            print(icon)
             logging.info(f'Attempting to read image from PATH={icon_path}')
-            ic_img = cv.imread("taskbar.png", cv.IMREAD_GRAYSCALE)
+            ic_img = cv.imread(f"icons/{icon}", cv.IMREAD_GRAYSCALE)
             kp_ic, des_ic = sift.detectAndCompute(ic_img, None)
             bf = cv.BFMatcher()
             matches = bf.knnMatch(des_dt, des_ic, k=2)
@@ -74,7 +75,11 @@ def check_icon(desktop, icon_path, threshold=.4, debug=0):
             for m, n in matches:
                 if m.distance < threshold * n.distance:
                     good.append([m])
-            #img_test = cv.drawMatchesKnn(dt_img, kp_dt, ic_img, kp_ic, good, None, flags=cv.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS)
-    #return len(good)
-'''
+            img_test = cv.drawMatchesKnn(dt_img, kp_dt, ic_img, kp_ic, good, None, flags=cv.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS)
+            plt.imshow(img_test), plt.show()
+            plt.imsave(f'debug_{icon}', img_test, dpi=500)
+
+        except AttributeError:
+            logging.warning('Failed to read image from PATH={icon_path}')
+
 
