@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Takes a desktop image to find the tasksbar inside bottom split
+from joblib.numpy_pickle_utils import xrange
+
+
 def check_desktop(desktop, template, confidence=.75, split=4, debug=0):
     try:
         logging.info(f'Atempting to read image from PATH={desktop}.')
@@ -55,7 +58,7 @@ def check_desktop(desktop, template, confidence=.75, split=4, debug=0):
 # Creates an edge from the icon using OpenCV canny() then tries to match
 # at multiple scales on the desktop
 # Returns amount of matches over a threshold
-def check_icon(desktop, icon_path, threshold=.2, debug=0):
+def check_icon(desktop, icon_path, threshold=.35, debug=0):
     logging.info(f'Starting check_icon with desktop_path={desktop}, icon_path={icon_path}, threshold={threshold}')
     sift = cv.SIFT_create()
     try:
@@ -71,16 +74,34 @@ def check_icon(desktop, icon_path, threshold=.2, debug=0):
             logging.info(f'Attempting to read image from PATH={icon_path}')
             ic_img = cv.imread(f"icons/{icon}", cv.IMREAD_GRAYSCALE)
             kp_ic, des_ic = sift.detectAndCompute(ic_img, None)
-            bf = cv.BFMatcher()
-            matches = bf.knnMatch(des_dt, des_ic, k=2)
+
+            # FLANN Matcher
+            flann_index_kdtree = 0
+            index_params = dict(algorithm=flann_index_kdtree, trees = 5)
+            search_params = dict(check=50)
+            flann = cv.FlannBasedMatcher(index_params, search_params)
+            matches = flann.knnMatch(des_dt, des_ic, k=2)
+
+            # BF Matcher
+            # bf = cv.BFMatcher()
+            # matches = bf.knnMatch(des_dt, des_ic, k=2)
+
+            #Mask Matches
+            matchesMask = [[0,0] for i in xrange(len(matches))]
+            #Ratio Test
+            for i,(m,n) in enumerate(matches):
+                if m.distance < threshold*n.distance:
+                    matchesMask[i]=[1,0]
+
+            draw_params = dict(matchColor=(0,255,0), singlePointColor=(255,0,0), matchesMask=matchesMask, flags=0)
             good = []
             for m, n in matches:
                 if m.distance < threshold * n.distance:
                     good.append([m])
             if debug:
-                img_test = cv.drawMatchesKnn(dt_img, kp_dt, ic_img, kp_ic, good, None, flags=cv.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS)
+                img_test = cv.drawMatchesKnn(dt_img, kp_dt, ic_img, kp_ic, matches, None, **draw_params)
                 plt.imshow(img_test), plt.show()
-                plt.imsave(f'debug_{icon}', img_test, dpi=500)
+                plt.imsave(f'debug_{icon}', img_test, dpi=350)
             res.append((len(good), icon))
         except AttributeError:
             logging.warning('Failed to read image from PATH={icon_path}')
