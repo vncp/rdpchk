@@ -1,7 +1,7 @@
 from check import *
 
 # PUT ALL PATHS HERE
-icon_dir = "icons"
+icon_dir = "icons_resized/"
 desktop_dir = "src/source_connection.png"
 
 icon_check = check_icon(desktop_dir, icon_dir, debug=1)

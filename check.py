@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Takes a desktop image to find the tasksbar inside bottom split
-from joblib.numpy_pickle_utils import xrange
 
 
 def check_desktop(desktop, template, confidence=.75, split=4, debug=0):
@@ -58,7 +57,7 @@ def check_desktop(desktop, template, confidence=.75, split=4, debug=0):
 # Creates an edge from the icon using OpenCV canny() then tries to match
 # at multiple scales on the desktop
 # Returns amount of matches over a threshold
-def check_icon(desktop, icon_path, threshold=.35, debug=0):
+def check_icon(desktop, icon_path, threshold=.4 , debug=0):
     logging.info(f'Starting check_icon with desktop_path={desktop}, icon_path={icon_path}, threshold={threshold}')
     sift = cv.SIFT_create()
     try:
@@ -70,36 +69,47 @@ def check_icon(desktop, icon_path, threshold=.35, debug=0):
 
     res = []
     for icon in os.listdir(icon_path):
+        print(icon)
         try:
-            logging.info(f'Attempting to read image from PATH={icon_path}')
-            ic_img = cv.imread(f"icons/{icon}", cv.IMREAD_GRAYSCALE)
+            print(f'Attempting to read image from PATH={icon_path+icon}')
+            logging.info(f'Attempting to read image from PATH={icon_path+icon}')
+            ic_img = cv.imread(f"{icon_path}{icon}", cv.IMREAD_GRAYSCALE)
             kp_ic, des_ic = sift.detectAndCompute(ic_img, None)
 
-            # FLANN Matcher
-            flann_index_kdtree = 0
-            index_params = dict(algorithm=flann_index_kdtree, trees = 5)
-            search_params = dict(check=50)
-            flann = cv.FlannBasedMatcher(index_params, search_params)
-            matches = flann.knnMatch(des_dt, des_ic, k=2)
-
             # BF Matcher
-            # bf = cv.BFMatcher()
-            # matches = bf.knnMatch(des_dt, des_ic, k=2)
-
-            #Mask Matches
-            matchesMask = [[0,0] for i in xrange(len(matches))]
+            bf = cv.BFMatcher()
+            matches = bf.knnMatch(des_dt, des_ic, k=2)
             #Ratio Test
-            for i,(m,n) in enumerate(matches):
-                if m.distance < threshold*n.distance:
-                    matchesMask[i]=[1,0]
-
-            draw_params = dict(matchColor=(0,255,0), singlePointColor=(255,0,0), matchesMask=matchesMask, flags=0)
             good = []
-            for m, n in matches:
-                if m.distance < threshold * n.distance:
-                    good.append([m])
+            try:
+                for m, n in matches:
+                    if m.distance < threshold * n.distance:
+                        good.append([m])
+            except ValueError:
+                pass
+
+            #Homography
+            min_match_count = 5
+            if len(good)>min_match_count:
+                src_pts = np.float32([ kp_dt[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+                dst_pts = np.float32([ kp_ic[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+
+                M, mask = cv.findHomography(src_pts, dst_pts, cv.RANSAC, 5.0)
+                matchesMask = mask.ravel().tolist()
+
+                h,w = dt_img.shape
+                pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0] ]).reshape(-1,1,2)
+                dst = cv.perspectiveTransform(pts, M)
+
+                dt_img = cv.polylines(dt_img,[np.int32(dst)],True,255,3,cv.LINE_AA)
+            else:
+                logging.info("Not enough matches are found")
+                matchesMask = None
+
+            draw_params = dict(matchColor=(0,255,0), singlePointColor=None, matchesMask=matchesMask, flags=2)
+
             if debug:
-                img_test = cv.drawMatchesKnn(dt_img, kp_dt, ic_img, kp_ic, matches, None, **draw_params)
+                img_test = cv.drawMatchesKnn(dt_img, kp_dt, ic_img, kp_ic, good, None, **draw_params)
                 plt.imshow(img_test), plt.show()
                 plt.imsave(f'debug_{icon}', img_test, dpi=350)
             res.append((len(good), icon))
